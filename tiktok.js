@@ -73,11 +73,17 @@ function formatNumber(num) {
 async function getTikTokVideoFromUsers(category, usernames) {
     try {
         // අහඹු ලෙස එක යූසර් කෙනෙක් තෝරගන්නවා
-        const username = usernames[Math.floor(Math.random() * usernames.length)].replace('@', '');
-        const res = await axios.get(`https://www.tikwm.com/api/user/posts?unique_id=${encodeURIComponent(username)}`);
+        let username = usernames[Math.floor(Math.random() * usernames.length)].replace('@', '');
+        
+        // 🚀 Cloudflare බ්ලොක් එකෙන් බේරෙන්න 'feed/search' පාවිච්චි කරනවා
+        // සර්ච් එකට @ කෑල්ලක් දානවා එතකොට ඒ යූසර්ගේ වීඩියෝ විතරක් එන්න තියෙන ඉඩ වැඩියි
+        const res = await axios.get(`https://www.tikwm.com/api/feed/search?keywords=${encodeURIComponent('@' + username)}`);
         const videos = res.data?.data?.videos;
         
-        if (!videos || videos.length === 0) return null;
+        if (!videos || videos.length === 0) {
+            console.log(`⚠️ No videos found for user: ${username}`);
+            return null;
+        }
 
         // හිස්ට්‍රි එක බලනවා
         let hist = await History.findOne({ category });
@@ -104,9 +110,11 @@ async function getTikTokVideoFromUsers(category, usernames) {
                 shares: selected.share_count || 0,
                 music: selected.music ? `https://www.tikwm.com${selected.music}` : null
             };
+        } else {
+            console.log(`ℹ️ All latest videos from ${username} are already posted.`);
         }
     } catch (e) {
-        console.error("TikTok User Posts Error:", e.message);
+        console.error("TikTok Search Hack Error:", e.message);
     }
     return null;
 }
