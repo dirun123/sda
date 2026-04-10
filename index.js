@@ -126,7 +126,11 @@ async function startBot() {
                 try {
                     const info = await getTikTokInfo(url);
                     if (info && info.videoUrl) {
-                        await sock.sendMessage(config.jid, { video: { url: info.videoUrl }, caption: info.title });
+                        const cleanTitle = info.title.replace(/#\S+/g, '').trim();
+                        await sock.sendMessage(config.jid, { 
+                            video: { url: info.videoUrl }, 
+                            caption: cleanTitle || "> Powered by Syntiox❤️🌐" 
+                        });
                         console.log(`✅ Manual Forward Success: Sent to ${config.jid}`);
                     } else {
                         console.log(`⚠️ Could not fetch video info for: ${url}`);
