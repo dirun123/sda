@@ -52,23 +52,24 @@ async function startBot() {
     });
 
    
-    sock.ev.on('connection.update', (update) => { 
-        const { connection, lastDisconnect, qr } = update;
 
-        // QR එක ලැබුණාම ඒක Terminal එකේ print කරනවා
-        if (qr) {
-            console.log("⬇️ Scan this QR Code with your WhatsApp:");
-            qrcode.generate(qr, { small: true }); // මෙතන { small: true } නිසා තමයි පොඩියට වැටෙන්නේ
-        }
+    sock.ev.on('connection.update', (update) => {
+    const { connection, qr } = update;
 
-        if (connection === 'close') {
-            // මොකක් හරි හේතුවකට disconnect වුණොත් ආයෙත් connect කරන්න
-            console.log("⚠️ Connection closed. Reconnecting...");
-            startBot(); 
-        } else if (connection === 'open') {
-            console.log("🔥 Syntiox Bot Live!");
-        }
-    });
+    if (qr) {
+        // ලොකු QR එකක් එන එක නවත්වන්න කලින් terminal එක clear කරන්න පුළුවන් (optional)
+        // console.clear(); 
+        
+        console.log("------------------------------------------");
+        console.log("SCAN THIS SMALL QR CODE:");
+        qrcode.generate(qr, { small: true }); // මෙතන තමයි magic එක තියෙන්නේ
+        console.log("------------------------------------------");
+    }
+
+    if (connection === 'open') {
+        console.log("🔥 Syntiox Bot Live!");
+    }
+})
 
     // --- 🤖 AUTO POSTER SCHEDULER ---
     // හැම විනාඩි 5කටම සැරයක් ඩේටාබේස් එක චෙක් කරලා පෝස්ට් කරන්න ඕන ඒවා තෝරනවා
