@@ -7,6 +7,7 @@ const express = require('express');
 const { useMongoDBAuthState } = require('./mongoAuth');
 const { Channel } = require('./models');
 const { getTikTokVideo, getTikTokInfo, formatNumber } = require('./tiktok');
+const QRCode = require('qrcode');
 
 const app = express();
 const port = 8000; // 👈 උඹ ඉල්ලපු Port 8000
@@ -14,6 +15,35 @@ const port = 8000; // 👈 උඹ ඉල්ලපු Port 8000
 // Koyeb Health Check එකට මේක ඕනේ
 app.get('/', (req, res) => res.send('Syntiox Bot is running! 🚀'));
 app.listen(port, () => console.log(`🌍 Health check server listening on port ${port}`));
+
+app.get('/qr', async (req, res) => {
+    if (!qrCodeImage) return res.send("<h1>QR Code එක තවම ලැබී නැත. කරුණාකර තත්පර කිහිපයකින් refresh කරන්න.</h1>");
+    
+    res.send(`
+        <html>
+            <body style="background: #f0f2f5; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif;">
+                <div style="background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center;">
+                    <h2 style="color: #075e54;">Scan this QR Code</h2>
+                    <img src="${qrCodeImage}" style="width: 300px; height: 300px; border: 1px solid #ddd; padding: 10px; border-radius: 10px;"/>
+                    <p style="margin-top: 15px; color: #666;">Scan within your WhatsApp Link Devices</p>
+                </div>
+                <script>setTimeout(() => { location.reload(); }, 20000);</script>
+            </body>
+        </html>
+    `);
+});
+
+// 2. Session එක Clear කරන පේජ් එක (Logout)
+app.get('/logout', async (req, res) => {
+    try {
+        const collection = mongoose.connection.db.collection('auths'); // ඔයාගේ mongo collection නම මෙතන දාන්න
+        await collection.deleteMany({ id: process.env.SESSION_ID });
+        res.send("<h1>Session Cleared! Restarting Bot...</h1>");
+        process.exit(0); // බොට්ව නවත්වනවා, Koyeb එකෙන් auto ආයේ start කරයි
+    } catch (err) {
+        res.send("Error: " + err.message);
+    }
+});
 
 
 async function startBot() {
@@ -53,23 +83,24 @@ async function startBot() {
 
    
 
-    sock.ev.on('connection.update', (update) => {
-    const { connection, qr } = update;
+sock.ev.on('connection.update', async (update) => { 
+        const { connection, qr } = update;
 
-    if (qr) {
-        // ලොකු QR එකක් එන එක නවත්වන්න කලින් terminal එක clear කරන්න පුළුවන් (optional)
-        // console.clear(); 
+        if (qr) {
+            // QR string එක image එකක් (Data URL) බවට පත් කරලා variable එකේ තියාගන්නවා
+            qrCodeImage = await QRCode.toDataURL(qr);
+            console.log("✅ New QR Generated! View it at: https://your-app-name.koyeb.app/qr");
+        }
+
+        if (connection === 'open') {
+            qrCodeImage = null; // Connect වුණාම QR එක අයින් කරනවා
+            console.log("🔥 Syntiox Bot Live!");
+        }
         
-        console.log("------------------------------------------");
-        console.log("SCAN THIS SMALL QR CODE:");
-        qrcode.generate(qr, { small: true }); // මෙතන තමයි magic එක තියෙන්නේ
-        console.log("------------------------------------------");
-    }
-
-    if (connection === 'open') {
-        console.log("🔥 Syntiox Bot Live!");
-    }
-})
+        if (connection === 'close') {
+            startBot();
+        }
+    });
 
     // --- 🤖 AUTO POSTER SCHEDULER ---
     // හැම විනාඩි 5කටම සැරයක් ඩේටාබේස් එක චෙක් කරලා පෝස්ට් කරන්න ඕන ඒවා තෝරනවා
