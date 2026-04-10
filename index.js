@@ -90,37 +90,41 @@ async function startBot() {
 
    
 
-sock.ev.on('connection.update', async (update) => { 
-    const { connection, lastDisconnect, qr } = update;
+sock.ev.on('connection.update', async (update) => {
+        const { connection, lastDisconnect, qr } = update;
 
-    if (qr) {
-        qrCodeImage = await QRCode.toDataURL(qr);
-        console.log("✅ New QR Generated!");
-    }
-
-    if (connection === 'close') {
-        const statusCode = lastDisconnect?.error?.output?.statusCode;
-        
-        // 515 (Restart Required) ආවොත් කෙලින්ම restart කරන්න
-        if (statusCode === DisconnectReason.restartRequired || statusCode === 515) {
-            console.log("🔄 Restart Required (515). Restarting bot...");
-            startBot();
-        } 
-        // වෙනත් හේතුවක් නිසා close වුණොත් (Logout නොවී)
-        else if (statusCode !== DisconnectReason.loggedOut) {
-            console.log("❌ Connection lost. Reconnecting in 5s...");
-            setTimeout(() => startBot(), 5000); 
-        } 
-        else {
-            console.log("🚫 Logged out from WhatsApp. Please scan again.");
+        // 1. QR එක ලැබුණාම ඒක Web එකට හදනවා
+        if (qr) {
+            qrCodeImage = await QRCode.toDataURL(qr); // qrcode library එක ඕනේ
+            console.log("✅ New QR Generated! View it at: /qr");
         }
-    } 
-    
-    else if (connection === 'open') {
-        qrCodeImage = null;
-        console.log("🔥 Syntiox Bot Live & Connected!");
-    }
-});
+
+        // 2. Connection එක Close වුණොත් (උඹ එවපු කෝඩ් එකේ Logic එක)
+        if (connection === 'close') {
+            const reason = lastDisconnect?.error?.output?.statusCode;
+            console.log("❌ Connection Closed. Reason:", reason);
+            
+            // 515 හෝ ලොග් අවුට් නොවන ඕනෑම හේතුවක් නම් රීකනෙක්ට් කරනවා
+            const shouldReconnect = reason !== DisconnectReason.loggedOut;
+
+            if (shouldReconnect) {
+                console.log("⚠️ Reconnecting in 5 seconds to let MongoDB sync...");
+                setTimeout(startBot, 5000); // තත්පර 5ක ඩීලේ එකක් අනිවාර්යයි
+            } else {
+                console.log("❌ Logged Out. Please scan QR again.");
+                // මොන්ගෝ එක ක්ලියර් කරන්න අවශ්‍ය නම් මෙතනින් කරන්න පුළුවන්
+            }
+        } 
+
+        // 3. Bot සාර්ථකව කනෙක්ට් වුණොත්
+        else if (connection === 'open') {
+            qrCodeImage = null; // QR එක අයින් කරනවා
+            console.log('✅ Bot Connected to WhatsApp!');
+            
+            // ඔයාගේ බොට් එකේ තියෙන අනිත් වැඩ මෙතනින් පටන් ගන්න
+            // උදා: Auto poster එක දැනටමත් cron එකෙන් දාලා තියෙන නිසා මෙතන විශේෂ දෙයක් ඕන නැහැ
+        }
+    });
 
     // --- 🤖 AUTO POSTER SCHEDULER ---
     // හැම විනාඩි 5කටම සැරයක් ඩේටාබේස් එක චෙක් කරලා පෝස්ට් කරන්න ඕන ඒවා තෝරනවා
