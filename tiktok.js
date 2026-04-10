@@ -77,7 +77,22 @@ async function getTikTokVideoFromUsers(category, usernames) {
         
         // 🚀 Cloudflare බ්ලොක් එකෙන් බේරෙන්න 'feed/search' පාවිච්චි කරනවා
         // සර්ච් එකට @ කෑල්ලක් දානවා එතකොට ඒ යූසර්ගේ වීඩියෝ විතරක් එන්න තියෙන ඉඩ වැඩියි
-        const res = await axios.get(`https://www.tikwm.com/api/feed/search?keywords=${encodeURIComponent('@' + username)}`);
+        const res = await axios.get(`https://www.tikwm.com/api/feed/search?keywords=${encodeURIComponent('@' + username)}`, {
+            headers: {
+                'accept': 'application/json, text/plain, */*',
+                'accept-language': 'en-US,en;q=0.9',
+                'cache-control': 'no-cache',
+                'pragma': 'no-cache',
+                'referer': 'https://www.tikwm.com/',
+                'sec-ch-ua': '"Chromium";v="116", "Not)A;Brand";v="24", "Google Chrome";v="116"',
+                'sec-ch-ua-mobile': '?0',
+                'sec-ch-ua-platform': '"Windows"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
+                'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'
+            }
+        });
         const videos = res.data?.data?.videos;
         
         if (!videos || videos.length === 0) {
