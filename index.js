@@ -1,4 +1,11 @@
-const { default: makeWASocket, fetchLatestBaileysVersion, useMultiFileAuthState, delay } = require('sandes-baileys-v2');
+const { 
+    default: makeWASocket, 
+    fetchLatestBaileysVersion, 
+    useMultiFileAuthState, 
+    delay,
+    DisconnectReason // 👈 අනිවාර්යයෙන්ම මේක මෙතනට එකතු කරන්න
+} = require('sandes-baileys-v2');
+
 const mongoose = require('mongoose');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
@@ -88,23 +95,29 @@ sock.ev.on('connection.update', async (update) => {
 
     if (qr) {
         qrCodeImage = await QRCode.toDataURL(qr);
-        console.log("✅ New QR Generated! Please scan fast.");
+        console.log("✅ New QR Generated!");
     }
 
     if (connection === 'close') {
-        // ඇයි disconnect වුණේ කියලා බලනවා
-        const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
         
-        console.log('❌ Connection closed due to ', lastDisconnect.error, ', reconnecting: ', shouldReconnect);
-        
-        // ලොග් අවුට් වෙලා නැත්නම් විතරක් ආයේ ස්ටාර්ට් කරනවා
-        if (shouldReconnect) {
+        // 515 (Restart Required) ආවොත් කෙලින්ම restart කරන්න
+        if (statusCode === DisconnectReason.restartRequired || statusCode === 515) {
+            console.log("🔄 Restart Required (515). Restarting bot...");
             startBot();
-        } else {
-            console.log("🚫 Logged out from WhatsApp. Clear MongoDB and scan again.");
+        } 
+        // වෙනත් හේතුවක් නිසා close වුණොත් (Logout නොවී)
+        else if (statusCode !== DisconnectReason.loggedOut) {
+            console.log("❌ Connection lost. Reconnecting in 5s...");
+            setTimeout(() => startBot(), 5000); 
+        } 
+        else {
+            console.log("🚫 Logged out from WhatsApp. Please scan again.");
         }
-    } else if (connection === 'open') {
-        qrCodeImage = null; // Scan එක ඉවරයි, QR එක අයින් කරන්න
+    } 
+    
+    else if (connection === 'open') {
+        qrCodeImage = null;
         console.log("🔥 Syntiox Bot Live & Connected!");
     }
 });
