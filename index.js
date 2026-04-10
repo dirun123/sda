@@ -84,23 +84,30 @@ async function startBot() {
    
 
 sock.ev.on('connection.update', async (update) => { 
-        const { connection, qr } = update;
+    const { connection, lastDisconnect, qr } = update;
 
-        if (qr) {
-            // QR string එක image එකක් (Data URL) බවට පත් කරලා variable එකේ තියාගන්නවා
-            qrCodeImage = await QRCode.toDataURL(qr);
-            console.log("✅ New QR Generated! View it at: https://your-app-name.koyeb.app/qr");
-        }
+    if (qr) {
+        qrCodeImage = await QRCode.toDataURL(qr);
+        console.log("✅ New QR Generated! Please scan fast.");
+    }
 
-        if (connection === 'open') {
-            qrCodeImage = null; // Connect වුණාම QR එක අයින් කරනවා
-            console.log("🔥 Syntiox Bot Live!");
-        }
+    if (connection === 'close') {
+        // ඇයි disconnect වුණේ කියලා බලනවා
+        const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
         
-        if (connection === 'close') {
+        console.log('❌ Connection closed due to ', lastDisconnect.error, ', reconnecting: ', shouldReconnect);
+        
+        // ලොග් අවුට් වෙලා නැත්නම් විතරක් ආයේ ස්ටාර්ට් කරනවා
+        if (shouldReconnect) {
             startBot();
+        } else {
+            console.log("🚫 Logged out from WhatsApp. Clear MongoDB and scan again.");
         }
-    });
+    } else if (connection === 'open') {
+        qrCodeImage = null; // Scan එක ඉවරයි, QR එක අයින් කරන්න
+        console.log("🔥 Syntiox Bot Live & Connected!");
+    }
+});
 
     // --- 🤖 AUTO POSTER SCHEDULER ---
     // හැම විනාඩි 5කටම සැරයක් ඩේටාබේස් එක චෙක් කරලා පෝස්ට් කරන්න ඕන ඒවා තෝරනවා
