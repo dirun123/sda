@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const cron = require('node-cron');
+const express = require('express');
 const { useMongoDBAuthState } = require('./mongoAuth');
 const { Channel } = require('./models');
 const { getTikTokVideo, getTikTokInfo, formatNumber } = require('./tiktok');
