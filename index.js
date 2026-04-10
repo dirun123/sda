@@ -25,7 +25,7 @@ async function startBot() {
         version,
         auth: state,
         logger: pino({ level: 'silent'}),
-        printQRInTerminal: true,
+        printQRInTerminal: false,
         browser: ["Ubuntu", "Chrome", "20.0.04"],
         markOnlineOnConnect: false, 
         generateHighQualityLinkPreview: false,
@@ -52,10 +52,22 @@ async function startBot() {
     });
 
    
-    sock.ev.on('creds.update', saveCreds);
-    sock.ev.on('connection.update', (up) => { 
-        if (up.qr && !process.env.PAIRING_NUMBER) qrcode.generate(up.qr, { small: true });
-        if (up.connection === 'open') console.log("🔥 Syntiox Bot Live!");
+    sock.ev.on('connection.update', (update) => { 
+        const { connection, lastDisconnect, qr } = update;
+
+        // QR එක ලැබුණාම ඒක Terminal එකේ print කරනවා
+        if (qr) {
+            console.log("⬇️ Scan this QR Code with your WhatsApp:");
+            qrcode.generate(qr, { small: true }); // මෙතන { small: true } නිසා තමයි පොඩියට වැටෙන්නේ
+        }
+
+        if (connection === 'close') {
+            // මොකක් හරි හේතුවකට disconnect වුණොත් ආයෙත් connect කරන්න
+            console.log("⚠️ Connection closed. Reconnecting...");
+            startBot(); 
+        } else if (connection === 'open') {
+            console.log("🔥 Syntiox Bot Live!");
+        }
     });
 
     // --- 🤖 AUTO POSTER SCHEDULER ---
