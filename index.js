@@ -113,35 +113,28 @@ async function startBot() {
         const sender = msg.key.participant || from;
         const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim();
 
-        // 1. TikTok Auto-Forwarder (Prefix නැතිව උඹට විතරක් වැඩ කරයි)
-        // 2. TIKTOK LINK DETECTION (Manual Forwarder)
-        const isTiktok = text.match(/(https?:\/\/vm\.tiktok\.com\/|https?:\/\/www\.tiktok\.com\/|https?:\/\/vt\.tiktok\.com\/)/gi);
+        const tiktokRegex = /https?:\/\/(vm|www|vt)\.tiktok\.com\/[^\s,]+/gi;
+        const isTiktok = text.match(tiktokRegex);
         
         if (isTiktok) {
             const config = await Channel.findOne({ category: 'manual_forward_' + sender });
             
             if (config) {
-                // 👇 ලින්ක් එක අහුවුණාම කන්සෝල් එකේ පෙන්වන්න
-                console.log(`🔍 TikTok Link detected from ${sender}. Processing...`);
+                const url = isTiktok[0]; // දැන් මෙතනට සම්පූර්ණ ලින්ක් එකම එනවා
+                console.log(`🔍 TikTok Link detected: ${url}`);
                 
-                const url = isTiktok[0].split(" ")[0];
                 try {
                     const info = await getTikTokInfo(url);
                     if (info && info.videoUrl) {
                         await sock.sendMessage(config.jid, { video: { url: info.videoUrl }, caption: info.title });
-                        
-                        // 👇 සාර්ථකව යැව්වාම මේ ලොග් එක වැටෙයි
-                        console.log(`✅ Manual Forward Success: Sent to Channel (${config.jid})`);
+                        console.log(`✅ Manual Forward Success: Sent to ${config.jid}`);
                     } else {
                         console.log(`⚠️ Could not fetch video info for: ${url}`);
                     }
                 } catch (e) { 
                     console.log("❌ Manual Forwarding Error:", e.message); 
                 }
-                return; // වෙනත් රිප්ලයි යවන්නේ නැත
-            } else {
-                // සෙටප් කරලා නැති නම්බර් එකක් නම් මෙතන ලොග් එකක් දාන්න පුළුවන් (ඕනෙ නම් විතරක්)
-                console.log(`ℹ️ TikTok link ignored from unconfigured sender: ${sender}`);
+                return;
             }
         }
         
