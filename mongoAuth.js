@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { initAuthCreds, BufferJSON, proto } = require('@whiskeysockets/baileys');
+const { initAuthCreds, BufferJSON, proto } = require('sandes-baileys-v2');
 
 const authSchema = new mongoose.Schema({
     _id: String,
