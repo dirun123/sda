@@ -17,6 +17,7 @@ const { getTikTokVideo, getTikTokInfo, formatNumber } = require('./tiktok');
 const QRCode = require('qrcode');
 
 const app = express();
+let qrCodeImage = null;
 const port = 8000; // 👈 උඹ ඉල්ලපු Port 8000
 
 // Koyeb Health Check එකට මේක ඕනේ
@@ -88,7 +89,7 @@ async function startBot() {
         msgRetryCounterCache: new Map(),
     });
 
-   
+   sock.ev.on('creds.update', saveCreds);
 
 sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
