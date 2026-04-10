@@ -3,57 +3,38 @@ const {
     fetchLatestBaileysVersion, 
     useMultiFileAuthState, 
     delay,
-    DisconnectReason // 👈 අනිවාර්යයෙන්ම මේක මෙතනට එකතු කරන්න
+    DisconnectReason 
 } = require('sandes-baileys-v2');
 
 const mongoose = require('mongoose');
 const pino = require('pino');
-const qrcode = require('qrcode-terminal');
 const cron = require('node-cron');
 const express = require('express');
 const { useMongoDBAuthState } = require('./mongoAuth');
 const { Channel } = require('./models');
-const { getTikTokVideo, getTikTokInfo, formatNumber } = require('./tiktok');
+const { getTikTokVideo, getTikTokInfo, formatNumber, getTikTokVideoFromUsers } = require('./tiktok');
 const QRCode = require('qrcode');
 
 const app = express();
 let qrCodeImage = null;
-const port = 8000; // 👈 උඹ ඉල්ලපු Port 8000
+const port = 8000;
 
-// Koyeb Health Check එකට මේක ඕනේ
+// --- 🌐 SERVER SETUP ---
 app.get('/', (req, res) => res.send('Syntiox Bot is running! 🚀'));
-app.listen(port, () => console.log(`🌍 Health check server listening on port ${port}`));
-
 app.get('/qr', async (req, res) => {
-    if (!qrCodeImage) return res.send("<h1>QR Code එක තවම ලැබී නැත. කරුණාකර තත්පර කිහිපයකින් refresh කරන්න.</h1>");
-    
-    res.send(`
-        <html>
-            <body style="background: #f0f2f5; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: sans-serif;">
-                <div style="background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center;">
-                    <h2 style="color: #075e54;">Scan this QR Code</h2>
-                    <img src="${qrCodeImage}" style="width: 300px; height: 300px; border: 1px solid #ddd; padding: 10px; border-radius: 10px;"/>
-                    <p style="margin-top: 15px; color: #666;">Scan within your WhatsApp Link Devices</p>
-                </div>
-                <script>setTimeout(() => { location.reload(); }, 20000);</script>
-            </body>
-        </html>
-    `);
+    if (!qrCodeImage) return res.send("<h1>QR Code එක ලැබී නැත. Refresh කරන්න.</h1>");
+    res.send(`<html><body style="background: #f0f2f5; display: flex; align-items: center; justify-content: center; height: 100vh;"><img src="${qrCodeImage}" style="width: 300px; height: 300px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);"/></body></html>`);
 });
-
-// 2. Session එක Clear කරන පේජ් එක (Logout)
 app.get('/logout', async (req, res) => {
     try {
-        const collection = mongoose.connection.db.collection('auths'); // ඔයාගේ mongo collection නම මෙතන දාන්න
-        await collection.deleteMany({ id: process.env.SESSION_ID });
-        res.send("<h1>Session Cleared! Restarting Bot...</h1>");
-        process.exit(0); // බොට්ව නවත්වනවා, Koyeb එකෙන් auto ආයේ start කරයි
-    } catch (err) {
-        res.send("Error: " + err.message);
-    }
+        await mongoose.connection.db.collection('auths').deleteMany({ id: process.env.SESSION_ID });
+        res.send("<h1>Session Cleared!</h1>");
+        process.exit(0);
+    } catch (err) { res.send(err.message); }
 });
+app.listen(port, () => console.log(`🌍 Server on port ${port}`));
 
-
+// --- 🤖 BOT LOGIC ---
 async function startBot() {
     await mongoose.connect(process.env.MONGODB_URL);
     const { state, saveCreds } = await useMongoDBAuthState(process.env.SESSION_ID);
@@ -82,226 +63,142 @@ async function startBot() {
                     return undefined;
                 }
             }
-            // Store එකක් නැත්නම් බොරුවක් යවලා හරි බේරගන්නවා
             return { conversation: "Hello" };
         },
-        // 👇 ViewOnce මැසේජ් Decrypt කරන්න ඕන 
         msgRetryCounterCache: new Map(),
     });
 
-   sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', saveCreds);
 
-sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-
-        // 1. QR එක ලැබුණාම ඒක Web එකට හදනවා
-        if (qr) {
-            qrCodeImage = await QRCode.toDataURL(qr); // qrcode library එක ඕනේ
-            console.log("✅ New QR Generated! View it at: /qr");
-        }
-
-        // 2. Connection එක Close වුණොත් (උඹ එවපු කෝඩ් එකේ Logic එක)
+    sock.ev.on('connection.update', async (up) => {
+        const { connection, lastDisconnect, qr } = up;
+        if (qr) qrCodeImage = await QRCode.toDataURL(qr);
         if (connection === 'close') {
             const reason = lastDisconnect?.error?.output?.statusCode;
-            console.log("❌ Connection Closed. Reason:", reason);
-            
-            // 515 හෝ ලොග් අවුට් නොවන ඕනෑම හේතුවක් නම් රීකනෙක්ට් කරනවා
-            const shouldReconnect = reason !== DisconnectReason.loggedOut;
-
-            if (shouldReconnect) {
-                console.log("⚠️ Reconnecting in 5 seconds to let MongoDB sync...");
-                setTimeout(startBot, 5000); // තත්පර 5ක ඩීලේ එකක් අනිවාර්යයි
-            } else {
-                console.log("❌ Logged Out. Please scan QR again.");
-                // මොන්ගෝ එක ක්ලියර් කරන්න අවශ්‍ය නම් මෙතනින් කරන්න පුළුවන්
+            if (reason !== DisconnectReason.loggedOut) {
+                console.log("🔄 Reconnecting...");
+                setTimeout(startBot, 5000);
             }
-        } 
-
-        // 3. Bot සාර්ථකව කනෙක්ට් වුණොත්
-        else if (connection === 'open') {
-            qrCodeImage = null; // QR එක අයින් කරනවා
-            console.log('✅ Bot Connected to WhatsApp!');
-            
-            // ඔයාගේ බොට් එකේ තියෙන අනිත් වැඩ මෙතනින් පටන් ගන්න
-            // උදා: Auto poster එක දැනටමත් cron එකෙන් දාලා තියෙන නිසා මෙතන විශේෂ දෙයක් ඕන නැහැ
+        } else if (connection === 'open') {
+            qrCodeImage = null;
+            console.log('✅ Syntiox Bot Live!');
         }
     });
 
-    // --- 🤖 AUTO POSTER SCHEDULER ---
-    // හැම විනාඩි 5කටම සැරයක් ඩේටාබේස් එක චෙක් කරලා පෝස්ට් කරන්න ඕන ඒවා තෝරනවා
+    // --- 🕒 AUTO POSTER SCHEDULER ---
     cron.schedule('*/5 * * * *', async () => {
-        const channels = await Channel.find({ isActive: true });
+        const channels = await Channel.find({ isActive: true, tiktokPages: { $exists: true, $not: { $size: 0 } } });
         for (const ch of channels) {
             const now = new Date();
-            
-            // දවස මාරු වෙලා නම් daily limit එක රීසෙට් කරනවා
             if (now.getDate() !== new Date(ch.lastReset).getDate()) {
-                ch.postsToday = 0;
-                ch.lastReset = now;
-                await ch.save();
+                ch.postsToday = 0; ch.lastReset = now; await ch.save();
             }
-
-            // දවසට දාන්න පුළුවන් ගාණ පැනලා නම් අදට පෝස්ට් කරන්නේ නැහැ
-            if (ch.dailyLimit > 0 && ch.postsToday >= ch.dailyLimit) {
-                continue;
-            }
-
-            const diff = (now - new Date(ch.lastPost)) / (1000 * 60); // විනාඩි වලින්
-
-            if (diff >= ch.interval) {
-                let video = null;
-                
-                // ලොක් කරපු TikTok පේජ් තියෙනවා නම් ඒවගෙන් ගන්නවා
-                if (ch.tiktokPages && ch.tiktokPages.length > 0) {
-                    const { getTikTokVideoFromUsers } = require('./tiktok');
-                    video = await getTikTokVideoFromUsers(ch.category, ch.tiktokPages);
-                } else {
-                    // නැත්නම් සාමාන්‍ය විදිහට keywords වලින් ගන්නවා
-                    video = await getTikTokVideo(ch.category, ch.keywords);
-                }
-
+            if (ch.dailyLimit > 0 && ch.postsToday >= ch.dailyLimit) continue;
+            if ((now - new Date(ch.lastPost)) / (1000 * 60) >= ch.interval) {
+                let video = await getTikTokVideoFromUsers(ch.category, ch.tiktokPages);
                 if (video) {
                     await sock.sendMessage(ch.jid, { video: { url: video.url }, caption: video.title });
-                    ch.lastPost = now;
-                    if (ch.dailyLimit > 0) ch.postsToday += 1;
-                    await ch.save();
-                    console.log(`✅ Auto Posted to ${ch.name}`);
+                    ch.lastPost = now; ch.postsToday += 1; await ch.save();
                 }
             }
         }
     });
 
-    // --- 💬 COMMANDS ---
+    // --- 💬 COMMANDS & LINK DETECTION ---
     sock.ev.on('messages.upsert', async m => {
         const msg = m.messages[0];
         if (!msg.message || msg.key.fromMe) return;
+
         const from = msg.key.remoteJid;
-        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || "";
+        const sender = msg.key.participant || from;
+        const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim();
 
-        // 1. .chinfo [Channel Link]
-        if (text.startsWith('.chinfo ')) {
-            const link = text.split(" ")[1];
-            if (!link || !link.includes('whatsapp.com/channel/')) {
-                return sock.sendMessage(from, { text: "❌ කරුණාකර නිවැරදි WhatsApp Channel ලින්ක් එකක් දෙන්න." });
-            }
-            const inviteCode = link.split('channel/')[1].split('/')[0];
-            try {
-                const meta = await sock.newsletterMetadata("invite", inviteCode);
-                let info = `📊 *Channel Information*\n\n`;
-                info += `🆔 *ID:* ${meta.id}\n`;
-                info += `📌 *Name:* ${meta.name}\n`;
-                info += `👥 *Subscribers:* ${meta.subscribers || 'N/A'}\n`;
-                info += `📝 *Description:* ${meta.description || 'N/A'}\n`;
-                info += `🔗 *Invite:* https://whatsapp.com/channel/${inviteCode}\n`;
-                
-                await sock.sendMessage(from, { text: info });
-            } catch (e) {
-                await sock.sendMessage(from, { text: "❌ චැනල් එකේ විස්තර ගන්න බැරි වුණා. ලින්ක් එක හරිද බලන්න." });
+        // 1. TikTok Auto-Forwarder (Prefix නැතිව උඹට විතරක් වැඩ කරයි)
+        const isTiktok = text.match(/(https?:\/\/vm\.tiktok\.com\/|https?:\/\/www\.tiktok\.com\/|https?:\/\/vt\.tiktok\.com\/)/gi);
+        if (isTiktok) {
+            const config = await Channel.findOne({ category: 'manual_forward_' + sender });
+            if (config) {
+                const info = await getTikTokInfo(isTiktok[0].split(" ")[0]);
+                if (info?.videoUrl) {
+                    await sock.sendMessage(config.jid, { video: { url: info.videoUrl }, caption: `🎬 *${info.title}*\n\n> Shared via Syntiox` });
+                }
+                return;
             }
         }
 
-        // 2. .locktiktok [Channel JID] [Daily Limit] [TikTok Usernames]
-        if (text.startsWith('.locktiktok ')) {
-            const parts = text.split(" ");
-            if (parts.length < 4) return sock.sendMessage(from, { text: "⚠️ භාවිතය: .locktiktok [channel_jid] [daily_limit] [tiktok_user1,user2,...]" });
-            
-            const targetJid = parts[1];
-            const limit = parseInt(parts[2]);
-            const pages = parts[3].split(",");
+        // 2. Commands (Must start with /)
+        if (!text.startsWith('/')) return;
+        const args = text.split(" ");
+        const command = args[0].toLowerCase();
 
-            let ch = await Channel.findOne({ jid: targetJid });
-            if (!ch) {
-                ch = new Channel({ jid: targetJid, name: 'Locked Channel', category: 'locked_' + targetJid, interval: 30 });
-            }
-            
-            ch.tiktokPages = pages;
-            ch.dailyLimit = limit;
-            ch.isActive = true;
-            await ch.save();
-
-            await sock.sendMessage(from, { text: `✅ චැනල් එක ලොක් කළා!\n🆔 ID: ${targetJid}\n📈 දවසකට වීඩියෝ: ${limit}\n👤 TikTok Pages: ${pages.join(", ")}` });
-        }
-
-        // 3. .addct [Category] [Interval] [Keywords...]
-        // උදා: .addct songs 30 සින්දු,sl_songs,trending
-        if (text.startsWith('.addct')) {
-            const parts = text.split(" ");
-            if (parts.length < 4) return sock.sendMessage(from, { text: "⚠️ භාවිතය: .addct [category] [minutes] [keywords,split,by,comma]" });
-            
-            const category = parts[1];
-            const interval = parseInt(parts[2]);
-            const keywords = parts.slice(3).join(" ").split(",");
-
+        // /setup [Channel_JID]
+        if (command === '/setup') {
+            const targetJid = args[1];
+            if (!targetJid || !targetJid.includes('@')) return sock.sendMessage(from, { text: "❌ JID එක වැරදියි!" });
             await Channel.findOneAndUpdate(
-                { jid: from },
-                { jid: from, name: category, category, interval, keywords, isActive: true },
+                { category: 'manual_forward_' + sender },
+                { jid: targetJid, name: 'Manual Link Forwarder', isActive: true, category: 'manual_forward_' + sender },
                 { upsert: true }
             );
-            await sock.sendMessage(from, { text: `✅ '${category}' පෝස්ටර් එක සක්‍රිය කළා!\n⏰ කාලය: විනාඩි ${interval}\n🔑 Keywords: ${keywords.join(", ")}` });
+            return sock.sendMessage(from, { text: `✅ උඹේ නම්බර් එක ${targetJid} ට ලොක් කළා!` });
         }
 
-        // 4. .tiktok [URL] (Download TikTok Video/Images)
-        if (text.startsWith('.tiktok ') || text.startsWith('.tt ')) {
-            const url = text.split(" ")[1];
-            if (!url) return sock.sendMessage(from, { text: "❌ කරුණාකර TikTok ලින්ක් එකක් දෙන්න." });
+        // /locktiktok [JID] [Limit] [Pages]
+        if (command === '/locktiktok') {
+            if (args.length < 4) return sock.sendMessage(from, { text: "⚠️ /locktiktok [jid] [limit] [user1,user2]" });
+            const jid = args[1], limit = parseInt(args[2]), pages = args[3].split(",");
+            await Channel.findOneAndUpdate({ jid }, { jid, dailyLimit: limit, tiktokPages: pages, isActive: true, category: 'locked_' + jid, interval: 30 }, { upsert: true });
+            return sock.sendMessage(from, { text: "✅ චැනල් එක ලොක් කළා!" });
+        }
 
-            await sock.sendMessage(from, { text: "⏳ ඩවුන්ලෝඩ් වෙමින් පවතී..." });
-            const info = await getTikTokInfo(url);
-            
-            if (!info) return sock.sendMessage(from, { text: "❌ වීඩියෝව සොයාගත නොහැක." });
+        // /addct [Category] [Interval] [Keywords]
+        if (command === '/addct') {
+            if (args.length < 4) return sock.sendMessage(from, { text: "⚠️ /addct [category] [min] [key1,key2]" });
+            const cat = args[1], interval = parseInt(args[2]), keywords = args.slice(3).join(" ").split(",");
+            await Channel.findOneAndUpdate({ jid: from }, { jid: from, name: cat, category: cat, interval, keywords, isActive: true }, { upsert: true });
+            return sock.sendMessage(from, { text: `✅ '${cat}' පෝස්ටර් එක සක්‍රිය කළා!` });
+        }
 
-            const caption = `🎬 *${info.title}*\n\n👤 Author: ${info.author}\n👁️ Views: ${formatNumber(info.views)} | ❤️ Likes: ${formatNumber(info.likes)}\n💬 Comments: ${formatNumber(info.comments)} | 🔗 Shares: ${formatNumber(info.shares)}\n\n> Powered by Syntiox`;
-
-            if (info.images && info.images.length > 0) {
-                // Image post
-                for (let i = 0; i < info.images.length; i++) {
-                    await sock.sendMessage(from, { image: { url: info.images[i] }, caption: i === 0 ? caption : "" });
-                }
-                // Send audio as well
-                if (info.musicUrl) {
-                    await sock.sendMessage(from, { audio: { url: info.musicUrl }, mimetype: 'audio/mp4' });
-                }
+        // /tiktok [URL]
+        if (command === '/tiktok' || command === '/tt') {
+            if (!args[1]) return;
+            const info = await getTikTokInfo(args[1]);
+            if (!info) return sock.sendMessage(from, { text: "❌ වීඩියෝව හමුනොවුනි." });
+            const cap = `🎬 *${info.title}*\n👤 ${info.author}\n> Syntiox`;
+            if (info.images?.length > 0) {
+                for (let img of info.images) await sock.sendMessage(from, { image: { url: img } });
             } else if (info.videoUrl) {
-                // Video post
-                await sock.sendMessage(from, { video: { url: info.videoUrl }, caption: caption });
-            } else {
-                await sock.sendMessage(from, { text: "❌ මෙය ඩවුන්ලෝඩ් කළ නොහැක." });
+                await sock.sendMessage(from, { video: { url: info.videoUrl }, caption: cap });
             }
+            return;
         }
 
-        // 5. .tkaudio [URL] (Download TikTok Audio)
-        if (text.startsWith('.tkaudio ') || text.startsWith('.tta ')) {
-            const url = text.split(" ")[1];
-            if (!url) return sock.sendMessage(from, { text: "❌ කරුණාකර TikTok ලින්ක් එකක් දෙන්න." });
-
-            await sock.sendMessage(from, { text: "⏳ ඔඩියෝ එක ඩවුන්ලෝඩ් වෙමින් පවතී..." });
-            const info = await getTikTokInfo(url);
-            
-            if (!info || !info.musicUrl) return sock.sendMessage(from, { text: "❌ ඔඩියෝ එක සොයාගත නොහැක." });
-
-            await sock.sendMessage(from, { 
-                audio: { url: info.musicUrl }, 
-                mimetype: 'audio/mp4',
-                ptt: false 
-            });
+        // /tkaudio [URL]
+        if (command === '/tkaudio' || command === '/tta') {
+            const info = await getTikTokInfo(args[1]);
+            if (info?.musicUrl) await sock.sendMessage(from, { audio: { url: info.musicUrl }, mimetype: 'audio/mp4' });
+            return;
         }
 
-        // 6. .delct (චැනල් එකේ ඔටෝ පෝස්ට් නවත්තන්න)
-        if (text === '.delct') {
-            await Channel.findOneAndDelete({ jid: from });
-            await sock.sendMessage(from, { text: "🛑 ඔටෝ පෝස්ට් පද්ධතිය ඉවත් කළා." });
+        // /chinfo [Link]
+        if (command === '/chinfo') {
+            const link = args[1];
+            if (!link?.includes('channel/')) return;
+            const code = link.split('channel/')[1];
+            const meta = await sock.newsletterMetadata("invite", code);
+            return sock.sendMessage(from, { text: `📊 *Channel Info*\n🆔 ${meta.id}\n📌 ${meta.name}\n👥 ${meta.subscribers}` });
         }
 
-        // 7. .status (බොට්ගේ විස්තර)
-        if (text === '.status') {
+        // /status, /jid, /delct
+        if (command === '/status') {
             const count = await Channel.countDocuments();
-            const active = await Channel.find({ isActive: true });
-            let status = `📊 *Syntiox Bot Status*\n\n🔹 සක්‍රිය චැනල් ගණන: ${count}\n\n`;
-            active.forEach(c => status += `📍 ${c.name} (${c.interval} min)\n`);
-            await sock.sendMessage(from, { text: status });
+            return sock.sendMessage(from, { text: `📊 *Status*\n🔹 සක්‍රිය පද්ධති: ${count}` });
         }
-
-        if (text === '.jid') await sock.sendMessage(from, { text: `Chat ID: ${from}` });
+        if (command === '/jid') return sock.sendMessage(from, { text: `🆔 JID: ${from}` });
+        if (command === '/delct') {
+            await Channel.findOneAndDelete({ category: 'manual_forward_' + sender });
+            return sock.sendMessage(from, { text: "🛑 සෙටප් එක ඉවත් කළා." });
+        }
     });
 }
 
