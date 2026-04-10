@@ -7,6 +7,14 @@ const { useMongoDBAuthState } = require('./mongoAuth');
 const { Channel } = require('./models');
 const { getTikTokVideo, getTikTokInfo, formatNumber } = require('./tiktok');
 
+const app = express();
+const port = 8000; // 👈 උඹ ඉල්ලපු Port 8000
+
+// Koyeb Health Check එකට මේක ඕනේ
+app.get('/', (req, res) => res.send('Syntiox Bot is running! 🚀'));
+app.listen(port, () => console.log(`🌍 Health check server listening on port ${port}`));
+
+
 async function startBot() {
     await mongoose.connect(process.env.MONGODB_URL);
     const { state, saveCreds } = await useMongoDBAuthState(process.env.SESSION_ID);
