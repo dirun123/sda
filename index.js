@@ -129,7 +129,8 @@ async function startBot() {
                         const cleanTitle = info.title.replace(/#\S+/g, '').trim();
                         await sock.sendMessage(config.jid, { 
                             video: { url: info.videoUrl }, 
-                            caption: cleanTitle || "> Powered by Syntiox❤️🌐" 
+                            caption: cleanTitle || "> Powered by Syntiox❤️🌐",
+                            mimetype: 'video/mp4'
                         });
                         console.log(`✅ Manual Forward Success: Sent to ${config.jid}`);
                     } else {
