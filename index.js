@@ -120,12 +120,17 @@ async function startBot() {
             if (config) {
                 const info = await getTikTokInfo(isTiktok[0].split(" ")[0]);
                 if (info?.videoUrl) {
-                    await sock.sendMessage(config.jid, { video: { url: info.videoUrl }, caption: `🎬 *${info.title}*\n\n> Shared via Syntiox` });
+                    // 👇 මෙතන තමයි caption එක තියෙන්නේ. දැන් වැටෙන්නේ title එක විතරයි.
+                    await sock.sendMessage(config.jid, { 
+                        video: { url: info.videoUrl }, 
+                        caption: info.title 
+                    });
                 }
                 return;
             }
         }
 
+        
         // 2. Commands (Must start with /)
         if (!text.startsWith('/')) return;
         const args = text.split(" ");
@@ -164,11 +169,15 @@ async function startBot() {
             if (!args[1]) return;
             const info = await getTikTokInfo(args[1]);
             if (!info) return sock.sendMessage(from, { text: "❌ වීඩියෝව හමුනොවුනි." });
-            const cap = `🎬 *${info.title}*\n👤 ${info.author}\n> Syntiox`;
+            
             if (info.images?.length > 0) {
                 for (let img of info.images) await sock.sendMessage(from, { image: { url: img } });
             } else if (info.videoUrl) {
-                await sock.sendMessage(from, { video: { url: info.videoUrl }, caption: cap });
+                // 👇 මෙතනත් caption එක title එකට විතරක් සීමා කළා.
+                await sock.sendMessage(from, { 
+                    video: { url: info.videoUrl }, 
+                    caption: info.title 
+                });
             }
             return;
         }
