@@ -3,6 +3,9 @@ FROM node:24-alpine
 # වැඩ කරන folder එක හදාගන්න
 WORKDIR /app
 
+# 🔴 මෙන්න මේ පේළිය අලුතෙන් එකතු කරන්න (FFmpeg ඉන්ස්ටෝල් කරන්න)
+RUN apk add --no-cache ffmpeg
+
 # මුලින්ම package files ටික කොපි කරගමු
 COPY package*.json ./
 
