@@ -25,7 +25,7 @@ async function startBot() {
         version,
         auth: state,
         logger: pino({ level: 'silent'}),
-        printQRInTerminal: false,
+        printQRInTerminal: true,
         browser: ["Ubuntu", "Chrome", "20.0.04"],
         markOnlineOnConnect: false, 
         generateHighQualityLinkPreview: false,
@@ -51,30 +51,7 @@ async function startBot() {
         msgRetryCounterCache: new Map(),
     });
 
-    // 🔴 PAIRING CODE LOGIC
-    if (!sock.authState.creds.registered) {
-        // 🔥 Environment Variable එකෙන් නම්බර් එක ගන්නවා
-        const phoneNumber = process.env.PAIRING_NUMBER;
-
-        if (!phoneNumber) {
-            console.log("⚠︎ Pairing Number not found! Please add PAIRING_NUMBER to environment variables.");
-        } else {
-            console.log(`⏳ Waiting for Pairing Code for: ${phoneNumber}`);
-            
-            setTimeout(async () => {
-                try {
-                    let code = await sock.requestPairingCode(phoneNumber);
-                    code = code?.match(/.{1,4}/g)?.join("-") || code;
-                    console.log("\n==================================================");
-                    console.log("🔐 YOUR PAIRING CODE:  " + code);
-                    console.log("==================================================\n");
-                } catch (err) {
-                    console.log("❌ Pairing Code Error: ", err);
-                }
-            }, 5000);
-        }
-    }
-
+   
     sock.ev.on('creds.update', saveCreds);
     sock.ev.on('connection.update', (up) => { 
         if (up.qr && !process.env.PAIRING_NUMBER) qrcode.generate(up.qr, { small: true });
