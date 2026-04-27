@@ -15,6 +15,9 @@ const { Channel } = require('./models');
 const { getTikTokVideo, getTikTokInfo, formatNumber, getTikTokVideoFromUsers } = require('./tiktok');
 const QRCode = require('qrcode');
 
+// 🔴 ඔයාගේ Smart Filter එක Import කරන තැන
+const { handleSmartFilter } = require('./smart_filter');
+
 const app = express();
 let qrCodeImage = null;
 const port = 8000;
@@ -53,7 +56,23 @@ async function startBot() {
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 10000,
         retryRequestDelayMs: 5000,
-        patchMessageBeforeVerting: true,
+        
+        // 🔴 බටන් ඔබද්දි එන Bad MAC අවුල හදන කෑල්ල (මේක අත්‍යවශ්‍යයි)
+        patchMessageBeforeVerting: (message) => {
+            const requiresPatch = !!(message.buttonsMessage || message.interactiveMessage);
+            if (requiresPatch) {
+                message = {
+                    viewOnceMessage: {
+                        message: {
+                            messageContextInfo: { deviceListMetadataVersion: 2, deviceListMetadata: {} },
+                            ...message,
+                        },
+                    },
+                };
+            }
+            return message;
+        },
+
         getMessage: async (key) => {
             if (global.MESSAGE_STORE) {
                 try {
@@ -113,14 +132,27 @@ async function startBot() {
         const sender = msg.key.participant || from;
         const text = (msg.message.conversation || msg.message.extendedTextMessage?.text || "").trim();
 
+        // 🔴 --- SMART FILTER INTERCEPTOR (මේකෙන් තමයි මුලින්ම ප්ලගින් එකට මැසේජ් යවන්නේ) --- 🔴
+        let processedText = text;
+        if (msg.message?.interactiveResponseMessage) {
+            const responseJson = JSON.parse(msg.message.interactiveResponseMessage.nativeFlowResponseMessage.paramsJson);
+            processedText = responseJson.id;
+        } else if (msg.message?.templateButtonReplyMessage) {
+            processedText = msg.message.templateButtonReplyMessage.selectedId;
+        }
+
+        const isFiltered = await handleSmartFilter(sock, msg, from, processedText);
+        if (isFiltered) return; // Smart Filter එකෙන් මැසේජ් එක හැන්ඩ්ල් කරා නම්, පල්ලෙහා තියෙන දේවල් රන් වෙන්නේ නෑ!
+        // ---------------------------------------------------------------------------------
+
         const tiktokRegex = /https?:\/\/(vm|www|vt)\.tiktok\.com\/[^\s,]+/gi;
-        const isTiktok = text.match(tiktokRegex);
+        const isTiktok = processedText.match(tiktokRegex);
         
         if (isTiktok) {
             const config = await Channel.findOne({ category: 'manual_forward_' + sender });
             
             if (config) {
-                const url = isTiktok[0]; // දැන් මෙතනට සම්පූර්ණ ලින්ක් එකම එනවා
+                const url = isTiktok[0]; 
                 console.log(`🔍 TikTok Link detected: ${url}`);
                 
                 try {
@@ -144,8 +176,8 @@ async function startBot() {
         }
         
         // 2. Commands (Must start with /)
-        if (!text.startsWith('/')) return;
-        const args = text.split(" ");
+        if (!processedText.startsWith('/')) return;
+        const args = processedText.split(" ");
         const command = args[0].toLowerCase();
 
         // /setup [Channel_JID]
@@ -185,7 +217,6 @@ async function startBot() {
             if (info.images?.length > 0) {
                 for (let img of info.images) await sock.sendMessage(from, { image: { url: img } });
             } else if (info.videoUrl) {
-                // 👇 මෙතනත් caption එක title එකට විතරක් සීමා කළා.
                 await sock.sendMessage(from, { 
                     video: { url: info.videoUrl }, 
                     caption: info.title 
